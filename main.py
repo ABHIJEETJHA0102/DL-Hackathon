@@ -1,13 +1,17 @@
 import streamlit as st
 import time
 import random
+import uuid
+from datetime import datetime
 
+# Set page config
 st.set_page_config(
     page_title="ChatGPT-like UI",
     page_icon="💬",
     layout="centered"
 )
 
+# Custom CSS for styling
 st.markdown("""
 <style>
     .main {
@@ -18,7 +22,8 @@ st.markdown("""
         border-radius: 0.8rem; 
         margin-bottom: 1rem; 
         display: flex;
-        align-items: flex-start;
+        align-items: center;
+            
     }
     .chat-message.user {
         background-color: #f0f2f6;
@@ -38,8 +43,6 @@ st.markdown("""
     }
     .sidebar .sidebar-content {
         background-color: #f7f7f8;
-        align-items: center;
-        justify-content: center;
     }
     .stTextInput>div>div>input {
         border-radius: 0.8rem;
@@ -53,7 +56,8 @@ st.markdown("""
         padding: 0.5rem 1rem;
         font-size: 1.1rem;
         border: none;
-        justify-content: center;
+        width: 100%;
+        text-align: left;
     }
     .stButton>button:hover {
         background-color: #0d8a6c;
@@ -70,19 +74,32 @@ st.markdown("""
         background: transparent;
         z-index: 9999;
     }
+    .session-id {
+        background-color: #e9f7f2;
+        border-radius: 4px;
+        margin-bottom: 10px;
+        font-size: 0.9rem;
+        border-left: 3px solid #10a37f;
+    }
 </style>
 """, unsafe_allow_html=True)
 
-if "messages" not in st.session_state:
-    st.session_state.messages = [
-        {"role": "bot", "content": "Hello! I'm your AI assistant. How can I help you today?"}
-    ]
+# Track all sessions and messages
+if "chat_sessions" not in st.session_state:
+    st.session_state.chat_sessions = {}
+
+if "all_messages" not in st.session_state:
+    st.session_state.all_messages = {}
+
+if "session_id" not in st.session_state:
+    st.session_state.session_id = None
 
 if "thinking" not in st.session_state:
     st.session_state.thinking = False
 
+
+# Function to simulate the AI thinking and generating response
 def generate_response(prompt):
-    
     responses = [
         f"Thank you for asking about '{prompt}'. Here's what I know about this topic...",
         f"That's an interesting question about '{prompt}'. Let me share some thoughts...",
@@ -94,42 +111,86 @@ def generate_response(prompt):
     
     return random.choice(responses)
 
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+if st.session_state.session_id and st.session_state.session_id in st.session_state.all_messages:
+    messages = st.session_state.all_messages[st.session_state.session_id]
+    for message in messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
 
-if st.session_state.thinking:
-    with st.chat_message("bot"):
-        st.write("Thinking...")
+if st.session_state.session_id:
+    prompt = st.chat_input("Ask something...")
 
-prompt = st.chat_input("Ask something...")
+    if prompt:
+        session_id = st.session_state.session_id
+        st.session_state.all_messages[session_id].append({"role": "user", "content": prompt})
+        
+        # Update last modified
+        st.session_state.chat_sessions[session_id]["last_updated"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-if prompt:
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    
-    with st.chat_message("user"):
-        st.markdown(prompt)
-    
-    st.session_state.thinking = True
-    st.rerun()
+        with st.chat_message("user"):
+            st.markdown(prompt)
 
-if st.session_state.thinking:
-    response = generate_response(st.session_state.messages[-1]["content"])
+        st.session_state.thinking = True
+        st.rerun()
+
+    if st.session_state.thinking:
+        response = generate_response(
+            st.session_state.all_messages[st.session_state.session_id][-1]["content"]
+        )
+
+        st.session_state.all_messages[st.session_state.session_id].append({"role": "bot", "content": response})
+        st.session_state.chat_sessions[st.session_state.session_id]["last_updated"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        with st.chat_message("bot"):
+            st.markdown(response)
+
+        st.session_state.thinking = False
+
     
-    st.session_state.messages.append({"role": "bot", "content": response})
-    
-    # Display assistant response
-    with st.chat_message("bot"):
-        st.markdown(response)
-    
-    st.session_state.thinking = False
+# Sidebar for new chat and settings
 with st.sidebar:
-    
+    # New chat button
     if st.button("New Chat"):
-        st.session_state.messages = [
+        new_session_id = str(uuid.uuid4())
+        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # Save new session info
+        st.session_state.chat_sessions[new_session_id] = {
+            "last_updated": current_time
+        }
+        
+        # Set current session
+        st.session_state.session_id = new_session_id
+
+        # Initialize messages for new session
+        st.session_state.all_messages[new_session_id] = [
             {"role": "bot", "content": "Hello! I'm your AI assistant. How can I help you today?"}
         ]
+        
         st.rerun()
+    
+    # Previous sessions section (optional - shows 5 most recent)
+    # Show recent sessions
+    if len(st.session_state.chat_sessions) > 0:
+        st.divider()
+        st.subheader("Recent Chats")
+
+        sorted_sessions = sorted(
+            st.session_state.chat_sessions.items(),
+            key=lambda x: x[1]["last_updated"],
+            reverse=True
+        )
+
+        count = 0
+        for session_id, _ in sorted_sessions:
+            label = f"Session {session_id[:8]}..."
+            if st.button(label, key=f"session_{session_id}"):
+                print(f"[DEBUG] Selected session: {session_id}")
+                st.session_state.session_id = session_id
+                st.rerun()
+            count += 1
+            if count >= 5:
+                break
     
     st.divider()
     
