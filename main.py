@@ -58,6 +58,18 @@ st.markdown("""
     .stButton>button:hover {
         background-color: #0d8a6c;
     }
+    .footer {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        text-align: center;
+        font-size: 0.8rem;
+        color: #888;
+        padding: 0.5rem;
+        background: transparent;
+        z-index: 9999;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -122,4 +134,9 @@ with st.sidebar:
     st.divider()
     
     st.caption("This is a demo ChatGPT-like UI built with Streamlit.")
-    st.caption("© 2025 Demo App")
+
+st.markdown("""
+<div class="footer">
+    © 2025 Demo App
+</div>
+""", unsafe_allow_html=True)
