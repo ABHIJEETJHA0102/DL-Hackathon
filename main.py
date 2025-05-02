@@ -111,46 +111,22 @@ def generate_response(prompt):
     
     return random.choice(responses)
 
-if st.session_state.session_id and st.session_state.session_id in st.session_state.all_messages:
-    messages = st.session_state.all_messages[st.session_state.session_id]
-    for message in messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
+if st.session_state.session_id is None:
+    # Show the welcome message when no session is active
+    with st.chat_message("bot"):
+        st.markdown("Hello! I'm your AI assistant. How can I help you today?")
+else:
+    if st.session_state.session_id and st.session_state.session_id in st.session_state.all_messages:
+        messages = st.session_state.all_messages[st.session_state.session_id]
+        for message in messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
 
-if st.session_state.session_id:
-    prompt = st.chat_input("Ask something...")
+prompt = st.chat_input("Ask something...")
 
-    if prompt:
-        session_id = st.session_state.session_id
-        st.session_state.all_messages[session_id].append({"role": "user", "content": prompt})
-        
-        # Update last modified
-        st.session_state.chat_sessions[session_id]["last_updated"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        with st.chat_message("user"):
-            st.markdown(prompt)
-
-        st.session_state.thinking = True
-        st.rerun()
-
-    if st.session_state.thinking:
-        response = generate_response(
-            st.session_state.all_messages[st.session_state.session_id][-1]["content"]
-        )
-
-        st.session_state.all_messages[st.session_state.session_id].append({"role": "bot", "content": response})
-        st.session_state.chat_sessions[st.session_state.session_id]["last_updated"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        with st.chat_message("bot"):
-            st.markdown(response)
-
-        st.session_state.thinking = False
-
-    
-# Sidebar for new chat and settings
-with st.sidebar:
-    # New chat button
-    if st.button("New Chat"):
+if prompt:
+    if st.session_state.session_id is None:
+        # Create a new session
         new_session_id = str(uuid.uuid4())
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
@@ -163,10 +139,36 @@ with st.sidebar:
         st.session_state.session_id = new_session_id
 
         # Initialize messages for new session
-        st.session_state.all_messages[new_session_id] = [
-            {"role": "bot", "content": "Hello! I'm your AI assistant. How can I help you today?"}
-        ]
-        
+        st.session_state.all_messages[new_session_id] = []
+    
+    session_id = st.session_state.session_id
+    st.session_state.all_messages[session_id].append({"role": "user", "content": prompt})
+    
+    # Update last modified
+    st.session_state.chat_sessions[session_id]["last_updated"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    st.session_state.thinking = True
+    st.rerun()
+
+if st.session_state.thinking:
+    response = generate_response(
+        st.session_state.all_messages[st.session_state.session_id][-1]["content"]
+    )
+
+    st.session_state.all_messages[st.session_state.session_id].append({"role": "bot", "content": response})
+    st.session_state.chat_sessions[st.session_state.session_id]["last_updated"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    with st.chat_message("bot"):
+        st.markdown(response)
+
+    st.session_state.thinking = False
+
+    
+# Sidebar for new chat and settings
+with st.sidebar:
+    # New chat button
+    if st.button("New Chat"):
+        st.session_state.session_id = None
         st.rerun()
     
     # Previous sessions section (optional - shows 5 most recent)
@@ -193,8 +195,6 @@ with st.sidebar:
                 break
     
     st.divider()
-    
-    st.caption("This is a demo ChatGPT-like UI built with Streamlit.")
 
 st.markdown("""
 <div class="footer">
