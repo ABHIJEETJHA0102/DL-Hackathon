@@ -185,11 +185,21 @@ with st.sidebar:
 
         count = 0
         for session_id, _ in sorted_sessions:
-            label = f"Session {session_id[:8]}..."
-            if st.button(label, key=f"session_{session_id}"):
-                print(f"[DEBUG] Selected session: {session_id}")
-                st.session_state.session_id = session_id
-                st.rerun()
+            col1, col2 = st.columns([4, 1])  # Create two columns for session label and delete button
+            with col1:
+                label = f"Session {session_id[:8]}..."
+                if st.button(label, key=f"session_{session_id}"):
+                    print(f"[DEBUG] Selected session: {session_id}")
+                    st.session_state.session_id = session_id
+                    st.rerun()
+            with col2:
+                if st.button("🗑️", key=f"delete_{session_id}"):  # Add a delete button
+                    # Delete the session and its history
+                    del st.session_state.chat_sessions[session_id]
+                    del st.session_state.all_messages[session_id]
+                    if st.session_state.session_id == session_id:
+                        st.session_state.session_id = None  # Reset current session if it was deleted
+                    st.rerun()  # Reload the page after deletion
             count += 1
             if count >= 5:
                 break
