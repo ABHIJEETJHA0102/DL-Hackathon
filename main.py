@@ -12,6 +12,7 @@ import numpy as np
 from tqdm import tqdm
 import sounddevice as sd
 from langchain.memory import ConversationBufferMemory
+import streamlit.components.v1 as com
 
 # Set page config
 st.set_page_config(
@@ -19,6 +20,13 @@ st.set_page_config(
     page_icon="💬",
     layout="centered"
 )
+
+col1, col2 = st.columns([1, 3])
+
+# Display Lottie animation in the first column
+with col1:
+    com.html("<div style='height: 360px; width: 950px; background: transparent;'></div>", height=360, width=950)
+
 
 # Custom CSS for styling
 st.markdown("""
