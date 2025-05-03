@@ -3,6 +3,15 @@ import time
 import random
 import uuid
 from datetime import datetime
+import os
+import torch
+import tempfile
+from transformers import WhisperProcessor, WhisperForConditionalGeneration
+import soundfile as sf
+import numpy as np
+from tqdm import tqdm
+import sounddevice as sd
+from langchain.memory import ConversationBufferMemory
 
 # Set page config
 st.set_page_config(
@@ -21,9 +30,9 @@ st.markdown("""
         padding: 1.5rem; 
         border-radius: 0.8rem; 
         margin-bottom: 1rem; 
-        display: flex;
+        height: 100%;
         align-items: center;
-            
+        display: flex;
     }
     .chat-message.user {
         background-color: #f0f2f6;
@@ -62,6 +71,15 @@ st.markdown("""
     .stButton>button:hover {
         background-color: #0d8a6c;
     }
+    .input-container {
+        position: fixed;
+        bottom: 40px;
+        left: 0;
+        width: 100%;
+        padding: 10px;
+        background-color: #f7f7f8;
+        z-index: 100;
+    }
     .footer {
         position: fixed;
         bottom: 0;
@@ -72,7 +90,7 @@ st.markdown("""
         color: #888;
         padding: 0.5rem;
         background: transparent;
-        z-index: 9999;
+        z-index: 99;
     }
     .session-id {
         background-color: #e9f7f2;
@@ -81,10 +99,33 @@ st.markdown("""
         font-size: 0.9rem;
         border-left: 3px solid #10a37f;
     }
+    .main .block-container {
+        padding-bottom: 100px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
+def load_model(model_size="small"):
+    """Load the Whisper model and processor"""
+    print("Loading Whisper model...")
+    model_name = f"openai/whisper-{model_size}"
+    
+    processor = WhisperProcessor.from_pretrained(model_name)
+    model = WhisperForConditionalGeneration.from_pretrained(model_name)
+    
+    # Use GPU if available
+    if torch.cuda.is_available():
+        model = model.cuda()
+        print("Using GPU for inference")
+    else:
+        print("Using CPU for inference (this might be slow)")
+    
+    return processor, model
+
 # Track all sessions and messages
+if "voice_text" not in st.session_state:
+    st.session_state.voice_text = ""
+
 if "chat_sessions" not in st.session_state:
     st.session_state.chat_sessions = {}
 
@@ -97,6 +138,130 @@ if "session_id" not in st.session_state:
 if "thinking" not in st.session_state:
     st.session_state.thinking = False
 
+if "memories" not in st.session_state:
+    st.session_state.memories = {}
+
+if "whisper_model" not in st.session_state:
+    with st.spinner("Loading Whisper model... This may take a moment."):
+        processor, model = load_model("small")
+        st.session_state.whisper_processor = processor
+        st.session_state.whisper_model = model
+        st.success("Model loaded successfully!")
+
+RESULT_FILE = "transcription_result.txt"
+
+def record_audio(duration=5, sample_rate=16000):
+    """Record audio from the microphone"""
+    temp_dir = tempfile.gettempdir()
+    output_file = os.path.join(temp_dir, f"recording_{int(time.time())}.wav")
+    
+    # Find an input device
+    input_device_index = None
+    for i, device in enumerate(sd.query_devices()):
+        if device['max_input_channels'] > 0:
+            input_device_index = i
+            print(f"Using microphone: {device['name']}")
+            break
+
+    if input_device_index is None:
+        print("Error: No microphone found")
+        return None
+    
+    print(f"Recording for {duration} seconds...")
+    
+    try:
+        # Record audio
+        audio = sd.rec(int(duration * sample_rate),
+                      samplerate=sample_rate,
+                      channels=1,
+                      dtype='int16',
+                      device=input_device_index)
+        
+        # Simple progress bar
+        for _ in tqdm(range(duration)):
+            time.sleep(1)
+        
+        sd.wait()  # Wait until recording is finished
+        print("Recording finished")
+        
+        # Save the audio to a temporary file
+        sf.write(output_file, audio, sample_rate)
+        return output_file
+    
+    except Exception as e:
+        print(f"Error recording audio: {e}")
+        return None
+    
+def transcribe_audio(file_path, processor, model):
+    """Transcribe an audio file"""
+    print(f"Transcribing audio...")
+    
+    try:
+        # Load audio
+        audio, sampling_rate = sf.read(file_path)
+        
+        # Convert to mono if stereo
+        if len(audio.shape) > 1:
+            audio = audio.mean(axis=1)
+        
+        # Ensure audio is in float32 format
+        if audio.dtype != np.float32:
+            audio = audio.astype(np.float32)
+        
+        # Normalize audio
+        if np.abs(audio).max() > 1.0:
+            audio = audio / np.abs(audio).max()
+        
+        # Process audio
+        input_features = processor(audio, sampling_rate=sampling_rate, return_tensors="pt").input_features
+        
+        # Move to GPU if available
+        if torch.cuda.is_available():
+            input_features = input_features.cuda()
+        
+        # Generate tokens
+        forced_decoder_ids = processor.get_decoder_prompt_ids(language="en", task="transcribe")
+        predicted_ids = model.generate(input_features, forced_decoder_ids=forced_decoder_ids)
+        
+        # Decode to text
+        transcription = processor.batch_decode(predicted_ids, skip_special_tokens=True)[0]
+        return transcription
+    
+    except Exception as e:
+        print(f"Error transcribing audio: {e}")
+        return ""
+    
+def voice_to_text():
+    """Main function to record and transcribe audio"""
+    # Set recording duration (in seconds)
+    duration = 5
+    
+    # Load the model
+    processor, model = load_model("small")
+    
+    # Record audio from microphone
+    audio_file = record_audio(duration=duration)
+    
+    if not audio_file:
+        print("Failed to record audio")
+        return
+    
+    # Transcribe the audio
+    transcription = transcribe_audio(audio_file, processor, model)
+    
+    # Save the transcription to a file that the main app can read
+    with open(RESULT_FILE, 'w', encoding='utf-8') as f:
+        f.write(transcription)
+    
+    print("\nTranscription:")
+    print(transcription)
+    print(f"\nTranscription saved to {RESULT_FILE}")
+    
+    # Clean up the temporary audio file
+    try:
+        os.remove(audio_file)
+    except:
+        pass
 
 # Function to simulate the AI thinking and generating response
 def generate_response(prompt):
@@ -111,59 +276,27 @@ def generate_response(prompt):
     
     return random.choice(responses)
 
-if st.session_state.session_id is None:
-    # Show the welcome message when no session is active
-    with st.chat_message("bot"):
-        st.markdown("Hello! I'm your AI assistant. How can I help you today?")
-else:
-    if st.session_state.session_id and st.session_state.session_id in st.session_state.all_messages:
-        messages = st.session_state.all_messages[st.session_state.session_id]
-        for message in messages:
-            with st.chat_message(message["role"]):
-                st.markdown(message["content"])
-
-prompt = st.chat_input("Ask something...")
-
-if prompt:
-    if st.session_state.session_id is None:
-        # Create a new session
-        new_session_id = str(uuid.uuid4())
-        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
-        # Save new session info
-        st.session_state.chat_sessions[new_session_id] = {
-            "last_updated": current_time
-        }
-        
-        # Set current session
-        st.session_state.session_id = new_session_id
-
-        # Initialize messages for new session
-        st.session_state.all_messages[new_session_id] = []
+def create_new_session():
+    new_session_id = str(uuid.uuid4())
+    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
-    session_id = st.session_state.session_id
-    st.session_state.all_messages[session_id].append({"role": "user", "content": prompt})
+    # Save new session info
+    st.session_state.chat_sessions[new_session_id] = {
+        "last_updated": current_time
+    }
     
-    # Update last modified
-    st.session_state.chat_sessions[session_id]["last_updated"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-    st.session_state.thinking = True
-    st.rerun()
-
-if st.session_state.thinking:
-    response = generate_response(
-        st.session_state.all_messages[st.session_state.session_id][-1]["content"]
+    # Initialize messages for new session
+    st.session_state.all_messages[new_session_id] = []
+    
+    # Initialize LangChain memory for this session
+    st.session_state.memories[new_session_id] = ConversationBufferMemory(
+        return_messages=True,
+        memory_key="chat_history"
     )
-
-    st.session_state.all_messages[st.session_state.session_id].append({"role": "bot", "content": response})
-    st.session_state.chat_sessions[st.session_state.session_id]["last_updated"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-    with st.chat_message("bot"):
-        st.markdown(response)
-
-    st.session_state.thinking = False
-
     
+    return new_session_id
+    
+chat_container = st.container()
 # Sidebar for new chat and settings
 with st.sidebar:
     # New chat button
@@ -197,6 +330,8 @@ with st.sidebar:
                     # Delete the session and its history
                     del st.session_state.chat_sessions[session_id]
                     del st.session_state.all_messages[session_id]
+                    if session_id in st.session_state.memories:
+                        del st.session_state.memories[session_id]
                     if st.session_state.session_id == session_id:
                         st.session_state.session_id = None  # Reset current session if it was deleted
                     st.rerun()  # Reload the page after deletion
@@ -205,6 +340,139 @@ with st.sidebar:
                 break
     
     st.divider()
+
+with chat_container:
+    if st.session_state.session_id is None:
+        # Show the welcome message when no session is active
+        with st.chat_message("bot"):
+            st.markdown("Hello! I'm your AI assistant. How can I help you today?")
+    else:
+        if st.session_state.session_id and st.session_state.session_id in st.session_state.all_messages:
+            messages = st.session_state.all_messages[st.session_state.session_id]
+            for message in messages:
+                with st.chat_message(message["role"]):
+                    st.markdown(message["content"])
+
+# st.markdown("<div class='input-container'>", unsafe_allow_html=True)
+# Replace the voice button and chat input section with this:
+prompt=None
+if "voice_text" in st.session_state and st.session_state.voice_text:
+    # If we have transcribed voice text, display it above the chat input
+    st.info(f"Voice input: {st.session_state.voice_text}")
+    
+    # Add buttons to use the voice text or clear it
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        if st.button("Use this text"):
+            prompt = st.session_state.voice_text
+            st.session_state.voice_text = ""  # Clear after use
+            
+            # Process the prompt just like regular text input
+            if st.session_state.session_id is None:
+                # Create a new session
+                new_session_id = str(uuid.uuid4())
+                current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                
+                # Save new session info
+                st.session_state.chat_sessions[new_session_id] = {
+                    "last_updated": current_time
+                }
+                
+                # Set current session
+                st.session_state.session_id = new_session_id
+
+                # Initialize messages for new session
+                st.session_state.all_messages[new_session_id] = []
+            
+            session_id = st.session_state.session_id
+            st.session_state.all_messages[session_id].append({"role": "user", "content": prompt})
+            
+            # Update last modified
+            st.session_state.chat_sessions[session_id]["last_updated"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            st.session_state.thinking = True
+            st.rerun()
+    with col2:
+        if st.button("Clear"):
+            st.session_state.voice_text = ""
+            st.rerun()
+
+else:
+    # Normal chat input and voice button layout
+    col1, col2 = st.columns([9, 1])  # Create two columns: one for the text input and one for the voice button
+
+    with col1:
+        prompt = st.chat_input("Ask something...")
+
+    with col2:
+        if st.button("🎤"):
+            with st.spinner("Recording..."):
+                # Directly use the functions with the pre-loaded model
+                audio_file = record_audio(duration=5)
+                
+                if audio_file:
+                    with st.spinner("Transcribing..."):
+                        # Use the models from session state
+                        transcribed_text = transcribe_audio(
+                            audio_file, 
+                            st.session_state.whisper_processor, 
+                            st.session_state.whisper_model
+                        )
+                        
+                        # Clean up the temporary audio file
+                        try:
+                            os.remove(audio_file)
+                        except:
+                            pass
+                        
+                        # If transcription was successful, store it in session state
+                        if transcribed_text:
+                            st.session_state.voice_text = transcribed_text
+                            st.rerun()
+                else:
+                    st.error("Failed to record audio. Please check your microphone.")
+
+st.markdown("</div>", unsafe_allow_html=True)
+
+if prompt:
+    if st.session_state.session_id is None:
+        # Create a new session
+        st.session_state.session_id = create_new_session()
+    
+    session_id = st.session_state.session_id
+    st.session_state.all_messages[session_id].append({"role": "user", "content": prompt})
+    
+    st.session_state.memories[session_id].chat_memory.add_user_message(prompt)
+
+    # Update last modified
+    st.session_state.chat_sessions[session_id]["last_updated"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    st.session_state.thinking = True
+    st.rerun()
+
+
+if st.session_state.thinking:
+    session_id = st.session_state.session_id
+    user_input = st.session_state.all_messages[session_id][-1]["content"]
+    
+    # Get conversation history from memory
+    memory = st.session_state.memories[session_id]
+
+    response = generate_response(
+        st.session_state.all_messages[st.session_state.session_id][-1]["content"]
+    )
+
+    st.session_state.all_messages[st.session_state.session_id].append({"role": "bot", "content": response})
+    st.session_state.memories[session_id].chat_memory.add_ai_message(response)
+    st.session_state.chat_sessions[st.session_state.session_id]["last_updated"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    with chat_container:
+        # Display just the newly generated response
+        with st.chat_message("bot"):
+            st.markdown(response)
+
+    st.session_state.thinking = False
+    st.rerun()
 
 st.markdown("""
 <div class="footer">
