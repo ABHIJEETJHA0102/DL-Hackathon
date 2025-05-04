@@ -1,5 +1,4 @@
-// The module 'vscode' contains the VS Code extensibility API
-// Import the module and reference it with the alias vscode in your code below
+
 let vscode;
 try {
   vscode = require('vscode');
@@ -22,8 +21,8 @@ let currentPanelView = undefined;
 
 /**
  * Execute a shell command and return its output as a Promise
- * @param {string} cmd - The command to execute
- * @returns {Promise<string>} - A promise that resolves with stdout or rejects with an error
+ * @param {string} cmd 
+ * @returns {Promise<string>} 
  */
 function executeCommand(cmd) {
   return new Promise((resolve, reject) => {
@@ -37,36 +36,25 @@ function executeCommand(cmd) {
   });
 }
 
-// This method is called when your extension is activated
-// Your extension is activated the very first time the command is executed
 /**
  * @param {vscode.ExtensionContext} context
  */
 function activate(context) {
-	// Use the console to output diagnostic information (console.log) and errors (console.error)
-	// This line of code will only be executed once when your extension is activated
 	console.log('Congratulations, your extension "matlab-troubleshooter" is now active!');
 	
-	// Log more activation information
 	console.log('Extension path:', context.extensionPath);
 	console.log('Extension URI:', context.extensionUri.toString());
 	
-	// The command has been defined in the package.json file
-	// Now provide the implementation of the command with registerCommand
-	// The commandId parameter must match the command field in package.json
-	const disposable = vscode.commands.registerCommand('matlab-troubleshooter.helloWorld', function () {
-		// The code you place here will be executed every time your command is executed
 
-		// Display a message box to the user
+	const disposable = vscode.commands.registerCommand('matlab-troubleshooter.helloWorld', function () {
+		
 		vscode.window.showInformationMessage('Hello World from Matlab_Troubleshooter!');
 	});
 
 	context.subscriptions.push(disposable);
 
-	// Register WebView View Provider for the sidebar - with explicit ID matching package.json
 	const provider = new MatlabTroubleshooterViewProvider(context.extensionUri, context.extensionPath);
 	
-	// Register the view provider with the extension
 	try {
 		const registration = vscode.window.registerWebviewViewProvider(
 			'matlab-troubleshooter-panel',
@@ -123,18 +111,15 @@ class MatlabTroubleshooterViewProvider {
 		this.sessionId = null;
 		this.extensionPath = extensionPath;
 		
-		// Path to the Python virtual environment
 		this.pythonEnvDir = path.join(this.extensionPath, 'Matlab_extension', '.venv');
 		
-		// Check if we're on Windows or Unix-like
 		this.isWindows = process.platform === 'win32';
 		
-		// Path to the Python executable in the virtual environment
 		this.pythonPath = this.isWindows 
 			? path.join(this.pythonEnvDir, 'Scripts', 'python.exe')
 			: path.join(this.pythonEnvDir, 'bin', 'python');
 			
-		// Path to the requirements.txt file
+
 		this.requirementsPath = path.join(this.extensionPath, 'Matlab_extension', 'requirements.txt');
 	}
 		/**
@@ -142,7 +127,6 @@ class MatlabTroubleshooterViewProvider {
 	 * @returns {string} - A unique session ID
 	 */
 	generateSessionId() {
-		// Create a random session ID using timestamp and random string
 		const timestamp = Date.now();
 		const randomStr = Math.random().toString(36).substring(2, 10);
 		this.sessionId = `session_${timestamp}_${randomStr}`;
@@ -186,7 +170,6 @@ class MatlabTroubleshooterViewProvider {
 		webviewView.webview.onDidReceiveMessage(message => {
 			switch (message.command) {
 				case 'troubleshoot':  //command
-					// Process the MATLAB code and provide troubleshooting feedback
 					this.troubleshootMatlabCode(message.code, webviewView);
 					break;
 			}
@@ -211,8 +194,8 @@ class MatlabTroubleshooterViewProvider {
 		});
 		
 		try {
-			// Make API call to the external endpoint
-			const apiEndpoint = "https://bda1-2409-40d7-e8-dce-4026-1aab-2ef2-879d.ngrok-free.app/chat/form";
+			// API call to the external endpoint
+			const apiEndpoint = "https://5d70-14-139-34-151.ngrok-free.app/chat/form";
 			
 			// To match the Python implementation, we need to use FormData with 'files' parameter
 			const https = require('https');
