@@ -59,7 +59,7 @@ class Orchestrator(BaseAgent):
         self.log("Processing image")
         return self.image_agent.run(query, image_bytes)
     
-    def run(self, query: str, image_bytes: Optional[bytes] = None) -> QueryResult:
+    def run(self, query: str, image_bytes: Optional[bytes] = None,conversation_history: Optional[List[Dict[str, Any]]] = None) -> QueryResult:
         """
         Process a query and generate a response using the RAG system.
         
@@ -71,7 +71,6 @@ class Orchestrator(BaseAgent):
             QueryResult: Final result containing response and references
         """
         self.log(f"Processing query: {query}")
-        
         # Process image if provided
         if image_bytes:
             self.log("Image detected, processing image")
@@ -84,7 +83,7 @@ class Orchestrator(BaseAgent):
         # If retrieval wasn't necessary, generate a response directly
         if not retrieval_performed:
             self.log("Retrieval not necessary, generating direct response")
-            generation_result = self.generation_agent.run(query, "none")
+            generation_result = self.generation_agent.run(query,conversation_history ,"none")
             
             return QueryResult(
                 final_response=generation_result["response"],
@@ -111,7 +110,8 @@ class Orchestrator(BaseAgent):
             strategy=strategy,
             documents=documents if strategy in ["kb_only", "hybrid"] else None,
             scores=scores if strategy in ["kb_only", "hybrid"] else None,
-            web_result=web_result if strategy in ["web_only", "hybrid"] else None
+            web_result=web_result if strategy in ["web_only", "hybrid"] else None,
+            conversation_history=conversation_history
         )
         
         # Step 5: Prepare final result

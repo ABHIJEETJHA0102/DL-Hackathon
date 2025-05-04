@@ -1,7 +1,7 @@
 """
 Generation Agent for creating responses based on retrieved information.
 """
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from langchain.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field
@@ -72,7 +72,7 @@ class GenerationAgent(BaseAgent):
             "sources": sources
         }
     
-    def generate_from_kb(self, query: str, documents: List[Document], scores: List[float]) -> Dict[str, Any]:
+    def generate_from_kb(self, query: str, documents: List[Document], scores: List[float], conversation_history: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
         """
         Generate response from knowledge base documents.
         
@@ -91,6 +91,11 @@ class GenerationAgent(BaseAgent):
         
         # Generate response
         input_data = {"query": query, "context": context_data["context"]}
+        # Include conversation history if provided
+        if conversation_history:
+            input_data["history"] = conversation_history
+            self.log(f"Conversation history length: {len(conversation_history)}")
+        
         response = self.generation_chain.invoke(input_data).response
         
         return {
@@ -98,7 +103,7 @@ class GenerationAgent(BaseAgent):
             "sources": context_data["sources"]
         }
     
-    def generate_from_web(self, query: str, web_result: WebSearchResult) -> Dict[str, Any]:
+    def generate_from_web(self, query: str, web_result: WebSearchResult,conversation_history: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
         """
         Generate response from web search results.
         
@@ -117,6 +122,11 @@ class GenerationAgent(BaseAgent):
         
         # Generate response
         input_data = {"query": query, "context": context}
+        # Include conversation history if provided
+        if conversation_history:
+            input_data["history"] = conversation_history
+            self.log(f"Conversation history length: {len(conversation_history)}")
+
         response = self.generation_chain.invoke(input_data).response
         
         return {
@@ -125,7 +135,7 @@ class GenerationAgent(BaseAgent):
         }
     
     def generate_hybrid(self, query: str, documents: List[Document], scores: List[float], 
-                       web_result: WebSearchResult) -> Dict[str, Any]:
+                       web_result: WebSearchResult,conversation_history: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
         """
         Generate hybrid response from both knowledge base and web search.
         
@@ -151,6 +161,11 @@ class GenerationAgent(BaseAgent):
         
         # Generate response
         input_data = {"query": query, "context": combined_context}
+        # Include conversation history if provided
+        if conversation_history:
+            input_data["history"] = conversation_history
+            self.log(f"Conversation history length: {len(conversation_history)}")
+
         response = self.generation_chain.invoke(input_data).response
         
         # Combine sources
@@ -161,7 +176,7 @@ class GenerationAgent(BaseAgent):
             "sources": sources
         }
     
-    def generate_without_context(self, query: str) -> Dict[str, Any]:
+    def generate_without_context(self, query: str,conversation_history: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
         """
         Generate response without any context.
         
@@ -175,6 +190,11 @@ class GenerationAgent(BaseAgent):
         
         # Generate response
         input_data = {"query": query, "context": "No specific context available."}
+        # Include conversation history if provided
+        if conversation_history:
+            input_data["history"] = conversation_history
+            self.log(f"Conversation history length: {len(conversation_history)}")
+
         response = self.generation_chain.invoke(input_data).response
         
         return {
@@ -183,7 +203,7 @@ class GenerationAgent(BaseAgent):
         }
     
     def run(self, query: str, strategy: str, documents: List[Document] = None, 
-           scores: List[float] = None, web_result: WebSearchResult = None) -> Dict[str, Any]:
+           scores: List[float] = None, web_result: WebSearchResult = None,conversation_history: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
         """
         Run the generation agent with the specified strategy.
         
@@ -200,10 +220,10 @@ class GenerationAgent(BaseAgent):
         self.log(f"Generating response using strategy: {strategy}")
         
         if strategy == 'kb_only':
-            return self.generate_from_kb(query, documents, scores)
+            return self.generate_from_kb(query, documents, scores,conversation_history)
         elif strategy == 'web_only':
-            return self.generate_from_web(query, web_result)
+            return self.generate_from_web(query, web_result,conversation_history)
         elif strategy == 'hybrid':
-            return self.generate_hybrid(query, documents, scores, web_result)
+            return self.generate_hybrid(query, documents, scores, web_result,conversation_history)
         else:  # 'none'
-            return self.generate_without_context(query)
+            return self.generate_without_context(query,conversation_history)
