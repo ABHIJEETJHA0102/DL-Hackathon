@@ -5,7 +5,8 @@
 
 MATFix AI is an interactive, multi-agent system that leverages advanced AI models and architectures to troubleshoot MATLAB errors. Designed with scalability, modularity, and explainability in mind, this system intelligently interprets user queries, extracts insights from MATLAB documentation, and provides crystal-clear guidance to fix issues.
 
-Understand our Approach - []
+📽️ [Understand Our Approach (Slides)](https://www.canva.com/design/DAGmbL8Vyeo/pvdwE1Hyc-AQbAsfsh9XKw/edit?utm_content=DAGmbL8Vyeo&utm_campaign=designshare&utm_medium=link2&utm_source=sharebutton)
+
 ---
 
 ## 🚀 Features
